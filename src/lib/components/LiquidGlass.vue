@@ -1,10 +1,30 @@
 <script lang="ts" setup>
-import { ref, watchEffect, computed, type CSSProperties } from 'vue';
+import { ref, watchEffect, computed, type CSSProperties, shallowRef } from 'vue';
 import type { LiquidGlassProps } from '../type';
 import { GlassMode } from '../type';
 import GlassContainer from './GlassContainer.vue'
 import { autoPx } from '../utils';
 
+// 节流函数
+function throttle<T extends (...args: any[]) => void>(func: T, delay: number): T {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let lastExecTime = 0;
+
+  return ((...args: any[]) => {
+    const currentTime = Date.now();
+
+    if (currentTime - lastExecTime > delay) {
+      func(...args);
+      lastExecTime = currentTime;
+    } else {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        func(...args);
+        lastExecTime = Date.now();
+      }, delay - (currentTime - lastExecTime));
+    }
+  }) as T;
+}
 
 const props = withDefaults(defineProps<LiquidGlassProps>(), {
   displacementScale: 70,
@@ -18,6 +38,7 @@ const props = withDefaults(defineProps<LiquidGlassProps>(), {
   overLight: false,
   mode: GlassMode.standard
 })
+
 const glassRef = ref<InstanceType<typeof GlassContainer>>()
 const isHovered = ref(false)
 const isActive = ref(false)
@@ -25,18 +46,38 @@ const glassSize = ref({ width: 270, height: 69 })
 const internalGlobalMousePos = ref({ x: 0, y: 0 })
 const internalMouseOffset = ref({ x: 0, y: 0 })
 
+// 缓存 DOM 查询结果
+const cachedRect = shallowRef<DOMRect | null>(null)
+const rectUpdateTime = ref(0)
+const RECT_CACHE_DURATION = 100 // 100ms 缓存时间
+
+// 获取缓存的 rect 或更新缓存
+const getCachedRect = () => {
+  const now = Date.now()
+  const container = props.mouseContainer || glassRef.value?.$el
+
+  if (!container) return null
+
+  if (!cachedRect.value || now - rectUpdateTime.value > RECT_CACHE_DURATION) {
+    cachedRect.value = container.getBoundingClientRect()
+    rectUpdateTime.value = now
+  }
+
+  return cachedRect.value
+}
+
 // Use external mouse position if provided, otherwise use internal
 const globalMousePos = computed(() => props.globalMousePos || internalGlobalMousePos.value)
 const mouseOffset = computed(() => props.mouseOffset || internalMouseOffset.value)
-const handleMouseMove = (e: MouseEvent) => {
-  const container = props.mouseContainer || glassRef.value?.$el
-  if (!container) {
-    return
-  }
 
-  const rect = container.getBoundingClientRect()
+// 优化的鼠标移动处理函数
+const handleMouseMove = (e: MouseEvent) => {
+  const rect = getCachedRect()
+  if (!rect) return
+
   const centerX = rect.left + rect.width / 2
   const centerY = rect.top + rect.height / 2
+
   Object.assign(internalMouseOffset.value, {
     x: ((e.clientX - centerX) / rect.width) * 100,
     y: ((e.clientY - centerY) / rect.height) * 100,
@@ -47,6 +88,9 @@ const handleMouseMove = (e: MouseEvent) => {
     y: e.clientY,
   })
 }
+
+// 节流的鼠标移动处理函数
+const throttledHandleMouseMove = throttle(handleMouseMove, 16) // ~60fps
 
 // Set up mouse tracking if no external mouse position is provided
 watchEffect(() => {
@@ -60,19 +104,22 @@ watchEffect(() => {
     return
   }
 
-  container.addEventListener("mousemove", handleMouseMove)
+  container.addEventListener("mousemove", throttledHandleMouseMove)
 
   return () => {
-    container.removeEventListener("mousemove", handleMouseMove)
+    container.removeEventListener("mousemove", throttledHandleMouseMove)
   }
 })
 
-const calculateDirectionalScale = computed(() => {
+// 缓存基础计算结果
+const baseCalculations = computed(() => {
   if (!globalMousePos.value.x || !globalMousePos.value.y || !glassRef.value) {
-    return "scale(1)"
+    return null
   }
 
-  const rect = glassRef.value?.$el.getBoundingClientRect()
+  const rect = getCachedRect()
+  if (!rect) return null
+
   const pillCenterX = rect.left + rect.width / 2
   const pillCenterY = rect.top + rect.height / 2
   const pillWidth = glassSize.value.width
@@ -88,17 +135,30 @@ const calculateDirectionalScale = computed(() => {
 
   // Activation zone: 200px from edges
   const activationZone = 200
+  const fadeInFactor = edgeDistance > activationZone ? 0 : 1 - edgeDistance / activationZone
 
-  // If outside activation zone, no effect
-  if (edgeDistance > activationZone) {
+  const centerDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+
+  return {
+    deltaX,
+    deltaY,
+    edgeDistance,
+    fadeInFactor,
+    centerDistance,
+    pillCenterX,
+    pillCenterY,
+    isActive: edgeDistance <= activationZone
+  }
+})
+
+const calculateDirectionalScale = computed(() => {
+  const calc = baseCalculations.value
+  if (!calc || !calc.isActive) {
     return "scale(1)"
   }
 
-  // Calculate fade-in factor (1 at edge, 0 at activation zone boundary)
-  const fadeInFactor = 1 - edgeDistance / activationZone
+  const { deltaX, deltaY, centerDistance, fadeInFactor } = calc
 
-  // Normalize the deltas for direction
-  const centerDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
   if (centerDistance === 0) {
     return "scale(1)"
   }
@@ -118,96 +178,78 @@ const calculateDirectionalScale = computed(() => {
   return `scaleX(${Math.max(0.8, scaleX)}) scaleY(${Math.max(0.8, scaleY)})`
 })
 
-const calculateFadeInFactor = computed(() => {
-  if (!globalMousePos.value.x || !globalMousePos.value.y || !glassRef.value) {
-    return 0
-  }
-
-  const rect = glassRef.value?.$el.getBoundingClientRect()
-  const pillCenterX = rect.left + rect.width / 2
-  const pillCenterY = rect.top + rect.height / 2
-  const pillWidth = glassSize.value.width
-  const pillHeight = glassSize.value.height
-
-  const edgeDistanceX = Math.max(0, Math.abs(globalMousePos.value.x - pillCenterX) - pillWidth / 2)
-  const edgeDistanceY = Math.max(0, Math.abs(globalMousePos.value.y - pillCenterY) - pillHeight / 2)
-  const edgeDistance = Math.sqrt(edgeDistanceX * edgeDistanceX + edgeDistanceY * edgeDistanceY)
-
-  const activationZone = 200
-  return edgeDistance > activationZone ? 0 : 1 - edgeDistance / activationZone
-})
 
 // Helper function to calculate elastic translation
 const calculateElasticTranslation = computed(() => {
-  if (!glassRef.value) {
+  const calc = baseCalculations.value
+  if (!calc) {
     return { x: 0, y: 0 }
   }
 
-  const fadeInFactor = calculateFadeInFactor.value
-  const rect = glassRef.value?.$el.getBoundingClientRect()
-  const pillCenterX = rect.left + rect.width / 2
-  const pillCenterY = rect.top + rect.height / 2
+  const { deltaX, deltaY, fadeInFactor } = calc
 
   return {
-    x: (globalMousePos.value.x - pillCenterX) * props.elasticity * 0.1 * fadeInFactor,
-    y: (globalMousePos.value.y - pillCenterY) * props.elasticity * 0.1 * fadeInFactor,
+    x: deltaX * props.elasticity * 0.1 * fadeInFactor,
+    y: deltaY * props.elasticity * 0.1 * fadeInFactor,
   }
-}
-)
+})
+
+// 节流的尺寸更新函数
+const throttledUpdateGlassSize = throttle(() => {
+  if (glassRef.value) {
+    const rect = glassRef.value?.$el.getBoundingClientRect()
+    Object.assign(glassSize.value, { width: rect.width, height: rect.height })
+    // 清除缓存的 rect，强制下次重新获取
+    cachedRect.value = null
+  }
+}, 100)
+
 // Update glass size whenever component mounts or window resizes
 watchEffect(() => {
-  const updateGlassSize = () => {
-    if (glassRef.value) {
-      const rect = glassRef.value?.$el.getBoundingClientRect()
-      Object.assign(glassSize.value, { width: rect.width, height: rect.height })
-    }
-  }
-
-  updateGlassSize()
-  window.addEventListener("resize", updateGlassSize)
-  return () => window.removeEventListener("resize", updateGlassSize)
+  throttledUpdateGlassSize()
+  window.addEventListener("resize", throttledUpdateGlassSize)
+  return () => window.removeEventListener("resize", throttledUpdateGlassSize)
 })
-const transformStyle = computed(() => {
+
+// 缓存常用的样式值
+const sharedStyleValues = computed(() => {
   const hasCustomPosition = props.style?.position && props.style.position !== 'relative'
+  const translation = calculateElasticTranslation.value
+
   const baseTransform = hasCustomPosition
-    ? `translate(calc(-50% + ${calculateElasticTranslation.value.x}px), calc(-50% + ${calculateElasticTranslation.value.y}px))`
-    : `translate(${calculateElasticTranslation.value.x}px, ${calculateElasticTranslation.value.y}px)`
+    ? `translate(calc(-50% + ${translation.x}px), calc(-50% + ${translation.y}px))`
+    : `translate(${translation.x}px, ${translation.y}px)`
 
   const scaleTransform = isActive.value && Boolean(props.onClick) ? "scale(0.96)" : calculateDirectionalScale.value
+  const transform = `${baseTransform} ${scaleTransform}`
+  const transition = "all ease-out 0.2s"
 
-  return `${baseTransform} ${scaleTransform}`
+  return {
+    transform,
+    transition,
+    hasCustomPosition,
+    height: autoPx(glassSize.value.height),
+    width: autoPx(glassSize.value.width),
+    borderRadius: `${props.cornerRadius}px`
+  }
 })
 
+
 const baseStyle = computed(() => {
-  const hasCustomPosition = props.style?.position && props.style.position !== 'relative'
+  const shared = sharedStyleValues.value
 
   return {
     ...props.style,
-    transform: transformStyle.value,
-    transition: "all ease-out 0.2s",
+    transform: shared.transform,
+    transition: shared.transition,
     position: props.style?.position || "relative",
-    ...(hasCustomPosition && {
+    ...(shared.hasCustomPosition && {
       top: props.style?.top || "50%",
       left: props.style?.left || "50%",
     })
   }
 })
 
-const positionStyles = computed<Partial<CSSProperties>>(() => {
-  const hasCustomPosition = props.style?.position && props.style.position !== 'relative'
-
-  if (hasCustomPosition) {
-    return {
-      position: baseStyle.value.position,
-      top: baseStyle.value.top,
-      left: baseStyle.value.left,
-    }
-  }
-
-  return {
-    position: "relative",
-  }
-})
 
 // 为相对定位模式创建容器样式
 const containerStyle = computed<Partial<CSSProperties>>(() => {
@@ -226,10 +268,14 @@ const containerStyle = computed<Partial<CSSProperties>>(() => {
 
 // 为相对定位模式的层级元素创建样式
 const layerStyle = computed<Partial<CSSProperties>>(() => {
-  const hasCustomPosition = props.style?.position && props.style.position !== 'relative'
+  const shared = sharedStyleValues.value
 
-  if (hasCustomPosition) {
-    return positionStyles.value
+  if (shared.hasCustomPosition) {
+    return {
+      position: baseStyle.value.position,
+      top: baseStyle.value.top,
+      left: baseStyle.value.left,
+    }
   }
 
   return {
@@ -238,115 +284,99 @@ const layerStyle = computed<Partial<CSSProperties>>(() => {
     left: 0,
   }
 })
+
+// 创建共享的层级样式对象
+const sharedLayerStyle = computed(() => {
+  const shared = sharedStyleValues.value
+
+  return {
+    ...layerStyle.value,
+    height: shared.height,
+    width: shared.width,
+    borderRadius: shared.borderRadius,
+    transform: shared.transform,
+    transition: shared.transition,
+  }
+})
+
+// 边框层的共享样式
+const borderLayerBaseStyle = computed(() => ({
+  ...sharedLayerStyle.value,
+  pointerEvents: 'none' as const,
+  padding: '1.5px',
+  WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+  WebkitMaskComposite: 'xor',
+  maskComposite: 'exclude',
+  boxShadow: '0 0 0 0.5px rgba(255, 255, 255, 0.5) inset, 0 1px 3px rgba(255, 255, 255, 0.25) inset, 0 1px 4px rgba(0, 0, 0, 0.35)',
+}))
+
+// 悬停效果的共享样式
+const hoverLayerBaseStyle = computed(() => {
+  const shared = sharedStyleValues.value
+
+  return {
+    ...layerStyle.value,
+    height: shared.height,
+    width: autoPx(glassSize.value.width + 1),
+    borderRadius: shared.borderRadius,
+    transform: shared.transform,
+    pointerEvents: 'none' as const,
+    transition: 'all 0.2s ease-out',
+    mixBlendMode: 'overlay' as const
+  }
+})
 </script>
 
 <template>
   <div :style="containerStyle">
     <!-- Over light effect -->
     <div
-      :class="`bg-black transition-all duration-150 ease-in-out pointer-events-none ${overLight ? 'opacity-20' : 'opacity-0'}`"
-      :style="{
-        ...layerStyle,
-        height: autoPx(glassSize.height),
-        width: autoPx(glassSize.width),
-        borderRadius: `${cornerRadius}px`,
-        transform: baseStyle.transform,
-        transition: baseStyle.transition,
-      }"></div>
+      :class="`bg-black transition-all duration-150 ease-in-out pointer-events-none ${props.overLight ? 'opacity-20' : 'opacity-0'}`"
+      :style="sharedLayerStyle"></div>
     <div
-      :class="`bg-black transition-all duration-150 ease-in-out pointer-events-none mix-blend-overlay ${overLight ? 'opacity-100' : 'opacity-0'}`"
-      :style="{
-        ...layerStyle,
-        height: autoPx(glassSize.height),
-        width: autoPx(glassSize.width),
-        borderRadius: `${cornerRadius}px`,
-        transform: baseStyle.transform,
-        transition: baseStyle.transition,
-      }"></div>
+      :class="`bg-black transition-all duration-150 ease-in-out pointer-events-none mix-blend-overlay ${props.overLight ? 'opacity-100' : 'opacity-0'}`"
+      :style="sharedLayerStyle"></div>
 
-    <GlassContainer ref="glassRef" v-bind="$attrs" :effect="effect" :style="baseStyle" :cornerRadius="cornerRadius"
-      :displacementScale="overLight ? displacementScale * 0.5 : displacementScale" :blurAmount="blurAmount"
-      :saturation="saturation" :aberrationIntensity="aberrationIntensity" :glassSize="glassSize" :padding="padding"
+    <GlassContainer ref="glassRef" v-bind="$attrs" :effect="props.effect" :style="baseStyle" :cornerRadius="props.cornerRadius"
+      :displacementScale="props.overLight ? props.displacementScale * 0.5 : props.displacementScale" :blurAmount="props.blurAmount"
+      :saturation="props.saturation" :aberrationIntensity="props.aberrationIntensity" :glassSize="glassSize" :padding="props.padding"
       :mouseOffset="mouseOffset" :onMouseEnter="() => isHovered = true" :onMouseLeave="() => isHovered = false"
-      :onMouseDown="() => isActive = true" :onMouseUp="() => isActive = false" :active="isActive" :overLight="overLight"
-      :onClick="onClick" :mode="mode">
+      :onMouseDown="() => isActive = true" :onMouseUp="() => isActive = false" :active="isActive" :overLight="props.overLight"
+      :onClick="props.onClick" :mode="props.mode">
       <slot />
     </GlassContainer>
 
     <!-- Border layer 1 - extracted from glass container -->
     <span :style="{
-      ...layerStyle,
-      height: autoPx(glassSize.height),
-      width: autoPx(glassSize.width),
-      borderRadius: `${cornerRadius}px`,
-      transform: baseStyle.transform,
-      transition: baseStyle.transition,
-      pointerEvents: 'none',
+      ...borderLayerBaseStyle,
       mixBlendMode: 'screen',
       opacity: 0.2,
-      padding: '1.5px',
-      WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-      WebkitMaskComposite: 'xor',
-      maskComposite: 'exclude',
-      boxShadow: '0 0 0 0.5px rgba(255, 255, 255, 0.5) inset, 0 1px 3px rgba(255, 255, 255, 0.25) inset, 0 1px 4px rgba(0, 0, 0, 0.35)',
       background: `linear-gradient( ${135 + mouseOffset.x * 1.2}deg, rgba(255, 255, 255, 0.0) 0%, rgba(255, 255, 255,${0.12 + Math.abs(mouseOffset.x) * 0.008}) ${Math.max(10, 33 + mouseOffset.y * 0.3)}%, rgba(255, 255, 255, ${0.4 + Math.abs(mouseOffset.x) * 0.012}) ${Math.min(90, 66 + mouseOffset.y * 0.4)}%, rgba(255, 255, 255, 0.0) 100% )`
     }"></span>
 
     <!-- Border layer 2 - duplicate with mix-blend-overlay -->
     <span :style="{
-      ...layerStyle,
-      height: autoPx(glassSize.height),
-      width: autoPx(glassSize.width),
-      borderRadius: `${cornerRadius}px`,
-      transform: baseStyle.transform,
-      transition: baseStyle.transition,
-      pointerEvents: 'none',
+      ...borderLayerBaseStyle,
       mixBlendMode: 'overlay',
-      padding: '1.5px',
-      WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-      WebkitMaskComposite: 'xor',
-      maskComposite: 'exclude',
-      boxShadow: '0 0 0 0.5px rgba(255, 255, 255, 0.5) inset, 0 1px 3px rgba(255, 255, 255, 0.25) inset, 0 1px 4px rgba(0, 0, 0, 0.35)',
       background: `linear-gradient( ${135 + mouseOffset.x * 1.2}deg, rgba(255, 255, 255, 0.0) 0%, rgba(255, 255, 255, ${0.32 + Math.abs(mouseOffset.x) * 0.008}) ${Math.max(10, 33 + mouseOffset.y * 0.3)}%, rgba(255, 255, 255, ${0.6 + Math.abs(mouseOffset.x) * 0.012}) ${Math.min(90, 66 + mouseOffset.y * 0.4)}%, rgba(255, 255, 255, 0.0) 100% )`
     }"></span>
 
-    <template v-if="Boolean(onClick)">
+    <template v-if="Boolean(props.onClick)">
       <!-- Hover effects -->
       <div :style="{
-        ...layerStyle,
-        height: autoPx(glassSize.height),
-        width: autoPx(glassSize.width + 1),
-        borderRadius: `${cornerRadius}px`,
-        transform: baseStyle.transform,
-        pointerEvents: 'none',
-        transition: 'all 0.2s ease-out',
+        ...hoverLayerBaseStyle,
         opacity: isHovered || isActive ? 0.5 : 0,
         backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 50%)',
-        mixBlendMode: 'overlay'
       }"></div>
       <div :style="{
-        ...layerStyle,
-        height: autoPx(glassSize.height),
-        width: autoPx(glassSize.width + 1),
-        borderRadius: `${cornerRadius}px`,
-        transform: baseStyle.transform,
-        pointerEvents: 'none',
-        transition: 'all 0.2s ease-out',
+        ...hoverLayerBaseStyle,
         opacity: isActive ? 0.5 : 0,
         backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0) 80%)',
-        mixBlendMode: 'overlay'
       }"></div>
       <div :style="{
-        ...layerStyle,
-        height: autoPx(glassSize.height),
-        width: autoPx(glassSize.width + 1),
-        borderRadius: `${cornerRadius}px`,
-        transform: baseStyle.transform,
-        pointerEvents: 'none',
-        transition: 'all 0.2s ease-out',
+        ...hoverLayerBaseStyle,
         opacity: isHovered ? 0.4 : isActive ? 0.8 : 0,
         backgroundImage: 'radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0) 100%)',
-        mixBlendMode: 'overlay'
       }"></div>
     </template>
   </div>
