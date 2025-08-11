@@ -1,5 +1,5 @@
 {
-  "name": "@your-username/liquid-glass-vue-optimized",
+  "name": "liquid-glass-vue3",
   "version": "1.1.0",
   "description": "Performance-optimized Apple's Liquid Glass effect for Vue 3. Fork with 70% better performance.",
   "keywords": [
@@ -12,10 +12,10 @@
     "ui",
     "component"
   ],
-  "homepage": "https://github.com/wxperia/liquid-glass-vue",
+  "homepage": "https://github.com/chencu5958/liquid-glass-vue",
   "repository": {
     "type": "git",
-    "url": "https://github.com/wxperia/liquid-glass-vue.git"
+    "url": "https://github.com/chencu5958/liquid-glass-vue.git"
   },
   "license": "MIT",
   "author": "Vue adaptation of liquid-glass-react",
