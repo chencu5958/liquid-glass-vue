@@ -13,9 +13,9 @@ const props = withDefaults(defineProps<LiquidGlassProps>(), {
   aberrationIntensity: 2,
   elasticity: 0.15,
   cornerRadius: 999,
+  className: '',
   padding: "24px 32px",
   overLight: false,
-
   mode: GlassMode.standard
 })
 const glassRef = ref<InstanceType<typeof GlassContainer>>()

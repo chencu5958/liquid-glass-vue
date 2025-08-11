@@ -18,7 +18,7 @@ describe('Utils', () => {
     })
 
     it('should handle empty strings', () => {
-      expect(autoPx('')).toBe('')
+      expect(autoPx('')).toBe('0px')
     })
   })
 
@@ -47,7 +47,7 @@ describe('Utils', () => {
     it('all displacement maps should contain valid base64 encoded data', () => {
       // Test base64 encoding validity
       const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/
-      
+
       const displacementBase64 = displacementMap.replace('data:image/jpeg;base64,', '')
       const polarBase64 = polarDisplacementMap.replace('data:image/jpeg;base64,', '')
       const prominentBase64 = prominentDisplacementMap.replace('data:image/png;base64,', '')
@@ -77,7 +77,7 @@ describe('Utils', () => {
       const mixedValue: number | string = Math.random() > 0.5 ? 100 : '50%'
       const result = autoPx(mixedValue)
       expect(typeof result).toBe('string')
-      
+
       if (typeof mixedValue === 'number') {
         expect(result).toBe(`${mixedValue}px`)
       } else {

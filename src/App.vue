@@ -114,7 +114,7 @@ onMounted(() => {
     <div :class="`flex-1 relative overflow-auto col-span-2 ${isDarkMode ? 'bg-black' : 'bg-gray-100'}`"
       ref="containerRef" @scroll="handleScroll">
       <div class="w-full min-h-[200vh] absolute top-0 left-0 pb-96 mb-96">
-        <img src="https://picsum.photos/2000/2000" class="w-full h-96 object-cover" />
+        <img src="https://images.unsplash.com/photo-1749740436817-60414cc23115" class="w-full h-96 object-cover" />
         <div class="flex flex-col gap-2" id="bright-section">
           <h2 :class="`text-2xl font-semibold my-5 text-center ${textClass}`">Some Title</h2>
           <p :class="`px-10 ${textClass}`">
@@ -126,9 +126,9 @@ onMounted(() => {
             This is a sample text content to demonstrate the liquid glass effect under different backgrounds.
           </p>
         </div>
-        <img src="https://picsum.photos/1200/1200" class="w-full h-80 object-cover my-10" />
-        <img src="https://picsum.photos/1400/1300" class="w-full h-72 object-cover my-10" />
-        <img src="https://picsum.photos/1100/1200" class="w-full h-96 object-cover my-10 mb-96" />
+        <img src="https://images.unsplash.com/photo-1749738456487-2af715ab65ea" class="w-full h-80 object-cover my-10" />
+        <img src="https://images.unsplash.com/photo-1754430544331-0b2d98edaf2a" class="w-full h-72 object-cover my-10" />
+        <img src="https://images.unsplash.com/photo-1754813920333-c8d169ee4a49" class="w-full h-96 object-cover my-10 mb-96" />
       </div>
       <!-- User Info Card -->
       <LiquidGlass v-if="activeTab === 'userInfo'" :effect="effect" :displacementScale="displacementScale"
