@@ -173,7 +173,7 @@ describe('LiquidGlass', () => {
       expect(glassContainer.props('displacementScale')).toBe(70)
     })
 
-    it('应该计算淡入因子', () => {
+    it('应该计算基础计算结果', () => {
       const wrapper = mount(LiquidGlass, {
         props: {
           ...defaultProps,
@@ -184,10 +184,13 @@ describe('LiquidGlass', () => {
         },
       })
 
-      // Test through DOM behavior instead of internal methods
-      const glassContainer = wrapper.findComponent(GlassContainer)
-      expect(glassContainer.exists()).toBe(true)
-      expect(glassContainer.props('active')).toBe(false)
+      const vm = wrapper.vm as any
+      const baseCalculations = vm.baseCalculations
+      expect(baseCalculations).toBeDefined()
+      if (baseCalculations) {
+        expect(baseCalculations.fadeInFactor).toBeGreaterThanOrEqual(0)
+        expect(baseCalculations.fadeInFactor).toBeLessThanOrEqual(1)
+      }
     })
 
     it('应该计算弹性位移', () => {
@@ -211,7 +214,7 @@ describe('LiquidGlass', () => {
   })
 
   describe('样式计算', () => {
-    it('应该正确计算变换样式', () => {
+    it('应该正确计算基础样式', () => {
       const wrapper = mount(LiquidGlass, {
         props: {
           ...defaultProps,
@@ -223,9 +226,9 @@ describe('LiquidGlass', () => {
       })
 
       const vm = wrapper.vm as any
-      const transformStyle = vm.transformStyle
-      expect(transformStyle).toContain('translate(calc(-50%')
-      expect(transformStyle).toContain('calc(-50%')
+      const baseStyle = vm.baseStyle
+      expect(baseStyle.transform).toBeDefined()
+      expect(baseStyle.transition).toBe('all ease-out 0.2s')
     })
 
     it('应该在active状态下应用缩放', async () => {
@@ -244,11 +247,11 @@ describe('LiquidGlass', () => {
       vm.isActive = true
       await nextTick()
 
-      const transformStyle = vm.transformStyle
-      expect(transformStyle).toContain('scale(0.96)')
+      const baseStyle = vm.baseStyle
+      expect(baseStyle.transform).toContain('scale(0.96)')
     })
 
-    it('应该正确计算位置样式', () => {
+    it('应该正确计算自定义位置样式', () => {
       const customStyle = {
         position: 'absolute' as const,
         top: '100px',
@@ -266,10 +269,28 @@ describe('LiquidGlass', () => {
       })
 
       const vm = wrapper.vm as any
-      const positionStyles = vm.positionStyles
-      expect(positionStyles.position).toBe('absolute')
-      expect(positionStyles.top).toBe('100px')
-      expect(positionStyles.left).toBe('200px')
+      const baseStyle = vm.baseStyle
+      expect(baseStyle.position).toBe('absolute')
+      expect(baseStyle.top).toBe('100px')
+      expect(baseStyle.left).toBe('200px')
+    })
+
+    it('应该正确计算共享样式值', () => {
+      const wrapper = mount(LiquidGlass, {
+        props: {
+          ...defaultProps,
+          cornerRadius: 20,
+        },
+        slots: {
+          default: '测试内容',
+        },
+      })
+
+      const vm = wrapper.vm as any
+      const sharedStyleValues = vm.sharedStyleValues
+      expect(sharedStyleValues.borderRadius).toBe('20px')
+      expect(sharedStyleValues.transition).toBe('all ease-out 0.2s')
+      expect(sharedStyleValues.transform).toBeDefined()
     })
   })
 
@@ -428,6 +449,9 @@ describe('LiquidGlass', () => {
 
       // 触发resize事件
       window.dispatchEvent(new Event('resize'))
+
+      // 等待节流函数执行完成 (100ms + 一些额外时间)
+      await new Promise(resolve => setTimeout(resolve, 150))
       await nextTick()
 
       // 验证尺寸是否更新

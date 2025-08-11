@@ -110,7 +110,6 @@ onMounted(() => {
 <template>
   <div
     :class="`grid grid-cols-3 shadow-2xl w-full max-w-5xl mx-auto my-10 h-screen max-h-[calc(100vh-5rem)] rounded-3xl overflow-hidden font-sans ${themeClass}`">
-
     <div :class="`flex-1 relative overflow-auto col-span-2 ${isDarkMode ? 'bg-black' : 'bg-gray-100'}`"
       ref="containerRef" @scroll="handleScroll">
       <div class="w-full min-h-[200vh] absolute top-0 left-0 pb-96 mb-96">
@@ -126,10 +125,14 @@ onMounted(() => {
             This is a sample text content to demonstrate the liquid glass effect under different backgrounds.
           </p>
         </div>
-        <img src="https://images.unsplash.com/photo-1749738456487-2af715ab65ea" class="w-full h-80 object-cover my-10" />
-        <img src="https://images.unsplash.com/photo-1754430544331-0b2d98edaf2a" class="w-full h-72 object-cover my-10" />
-        <img src="https://images.unsplash.com/photo-1754813920333-c8d169ee4a49" class="w-full h-96 object-cover my-10 mb-96" />
+        <img src="https://images.unsplash.com/photo-1749738456487-2af715ab65ea"
+          class="w-full h-80 object-cover my-10" />
+        <img src="https://images.unsplash.com/photo-1754430544331-0b2d98edaf2a"
+          class="w-full h-72 object-cover my-10" />
+        <img src="https://images.unsplash.com/photo-1754813920333-c8d169ee4a49"
+          class="w-full h-96 object-cover my-10 mb-96" />
       </div>
+
       <!-- User Info Card -->
       <LiquidGlass v-if="activeTab === 'userInfo'" :effect="effect" :displacementScale="displacementScale"
         :blurAmount="blurAmount" :saturation="saturation" :aberrationIntensity="aberrationIntensity"
@@ -249,7 +252,7 @@ onMounted(() => {
                 <input type="radio" :id="`effect${effectType}`" name="effect" :value="effectType" v-model="effect"
                   class="w-4 h-4 accent-blue-500" />
                 <label :class="`text-sm ${textClass}`" :for="`effect${effectType}`">{{ effectNames[effectType]
-                }}</label>
+                  }}</label>
               </div>
             </div>
             <p :class="`text-xs mt-2 ${textTertiaryClass}`">Select the liquid glass effect type</p>
@@ -337,7 +340,7 @@ onMounted(() => {
             <span :class="`block text-sm font-semibold mb-3 ${textClass}`">Corner Radius</span>
             <div class="mb-2">
               <span class="text-xl font-mono text-pink-500">{{ cornerRadius === 999 ? "完全" : `${cornerRadius}px`
-              }}</span>
+                }}</span>
             </div>
             <input type="range" min="0" max="100" step="1" v-model="cornerRadius"
               :class="`w-full ${isDarkMode ? 'bg-white/10' : 'bg-gray-200'}`" />
@@ -452,6 +455,24 @@ onMounted(() => {
       </div>
     </div>
   </div>
+  <div class="w-full" style="display: flex; align-items: center;">
+    <LiquidGlass>
+      <button>点击我</button>
+    </LiquidGlass>
+  </div>
+  <!-- 相对定位，在文档流中（默认） -->
+  <LiquidGlass>Content</LiquidGlass>
+
+  <!-- 固定定位，自动居中 -->
+  <LiquidGlass :style="{ position: 'fixed', top: '50%', left: '50%' }">
+    Content
+  </LiquidGlass>
+
+  <!-- 绝对定位，指定位置不居中 -->
+  <LiquidGlass :style="{ position: 'absolute', top: '200px', left: '200px' }">
+    Content
+  </LiquidGlass>
+
 </template>
 
 <style scoped>
