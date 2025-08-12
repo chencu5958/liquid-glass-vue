@@ -1,6 +1,6 @@
 {
   "name": "@chencu/liquid-glass-vue",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Performance-optimized Apple's Liquid Glass effect for Vue 3. Fork with 70% better performance.",
   "keywords": [
     "vue",
