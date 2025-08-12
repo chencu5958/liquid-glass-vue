@@ -37,13 +37,13 @@ Apple's Liquid Glass effect for Vue 3.
 ### Installation
 
 ```bash
-npm install @wxperia/liquid-glass-vue
+npm install @chencu/liquid-glass-vue
 ```
 
 ### Global Usage
 
 ```ts
-import LiquidGlass from 'liquid-glass-vue'
+import LiquidGlass from '@chencu/liquid-glass-vue'
 import { createApp } from 'vue'
 
 const app = createApp()
@@ -68,7 +68,7 @@ app.use(LiquidGlass)
 
 ```vue
 <script setup lang="ts">
-  import { LiquidGlass } from 'liquid-glass-vue'
+  import LiquidGlass from '@chencu/liquid-glass-vue'
 </script>
 
 <template>
@@ -85,7 +85,7 @@ app.use(LiquidGlass)
 
 ```vue
 <script setup lang="ts">
-  import { LiquidGlass } from '@wxperia/liquid-glass-vue'
+  import LiquidGlass from '@chencu/liquid-glass-vue'
 
   const handleClick = () => {
     console.log('Button clicked!')
@@ -117,7 +117,7 @@ When you want the glass effect to respond to mouse movement over a larger area (
 ```vue
 <script setup lang="ts">
   import { ref } from 'vue'
-  import { LiquidGlass } from 'liquid-glass-vue'
+  import LiquidGlass from '@chencu/liquid-glass-vue'
 
   const containerRef = ref<HTMLDivElement>()
 </script>
@@ -189,4 +189,5 @@ This Vue implementation maintains the same visual effects and behavior as the or
 ### Credits
 
 - Original React implementation: [liquid-glass-react](https://github.com/rdev/liquid-glass-react) by [rdev](https://github.com/rdev)
+- Original Vue implementation: [liquid-glass-vue](https://github.com/WXperia/liquid-glass-vue) by [WXperia](https://github.com/WXperia)
 - Vue adaptation: Converted to Vue 3 with Composition API

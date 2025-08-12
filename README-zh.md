@@ -36,13 +36,13 @@ Apple 液体玻璃效果的 Vue 3 实现。
 ### 安装
 
 ```bash
-npm install @wxperia/liquid-glass-vue
+npm install @chencu/liquid-glass-vue
 ```
 
 ### 全局使用
 
 ```ts
-import LiquidGlass from 'liquid-glass-vue'
+import LiquidGlass from '@chencu/liquid-glass-vue'
 import { createApp } from 'vue'
 
 const app = createApp()
@@ -67,7 +67,7 @@ app.use(LiquidGlass)
 
 ```vue
 <script setup lang="ts">
-  import { LiquidGlass } from 'liquid-glass-vue'
+  import LiquidGlass from '@chencu/liquid-glass-vue'
 </script>
 
 <template>
@@ -84,7 +84,7 @@ app.use(LiquidGlass)
 
 ```vue
 <script setup lang="ts">
-  import { LiquidGlass } from '@wxperia/liquid-glass-vue'
+  import LiquidGlass from '@chencu/liquid-glass-vue'
 
   const handleClick = () => {
     console.log('按钮被点击！')
@@ -116,7 +116,7 @@ app.use(LiquidGlass)
 ```vue
 <script setup lang="ts">
   import { ref } from 'vue'
-  import { LiquidGlass } from 'liquid-glass-vue'
+  import LiquidGlass from '@chencu/liquid-glass-vue'
 
   const containerRef = ref<HTMLDivElement>()
 </script>
@@ -188,4 +188,5 @@ app.use(LiquidGlass)
 ### 致谢
 
 - 原始 React 实现：[liquid-glass-react](https://github.com/rdev/liquid-glass-react) 由 [rdev](https://github.com/rdev) 开发
+- 原始 Vue 实现：[liquid-glass-vue](https://github.com/WXperia/liquid-glass-vue) 由 [WXperia](https://github.com/WXperia) 开发
 - Vue 适配：使用组合式 API 转换为 Vue 3
