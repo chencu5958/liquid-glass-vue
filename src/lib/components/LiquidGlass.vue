@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, watchEffect, computed, type CSSProperties, shallowRef } from 'vue';
+import { ref, watchEffect, computed, type CSSProperties } from 'vue';
 import type { LiquidGlassProps } from '../type';
 import { GlassMode } from '../type';
 import GlassContainer from './GlassContainer.vue'
@@ -46,68 +46,141 @@ const glassSize = ref({ width: 270, height: 69 })
 const internalGlobalMousePos = ref({ x: 0, y: 0 })
 const internalMouseOffset = ref({ x: 0, y: 0 })
 
-// 缓存 DOM 查询结果
-const cachedRect = shallowRef<DOMRect | null>(null)
-const rectUpdateTime = ref(0)
-const RECT_CACHE_DURATION = 100 // 100ms 缓存时间
+// 检测是否为触摸设备
+const isTouchDevice = ref(false)
 
-// 获取缓存的 rect 或更新缓存
-const getCachedRect = () => {
-  const now = Date.now()
-  const container = props.mouseContainer || glassRef.value?.$el
-
-  if (!container) return null
-
-  if (!cachedRect.value || now - rectUpdateTime.value > RECT_CACHE_DURATION) {
-    cachedRect.value = container.getBoundingClientRect()
-    rectUpdateTime.value = now
-  }
-
-  return cachedRect.value
+// 检测设备类型
+const detectTouchDevice = () => {
+  isTouchDevice.value = 'ontouchstart' in window || navigator.maxTouchPoints > 0
 }
+
+// 在组件挂载时检测设备类型
+watchEffect(() => {
+  detectTouchDevice()
+})
+
 
 // Use external mouse position if provided, otherwise use internal
 const globalMousePos = computed(() => props.globalMousePos || internalGlobalMousePos.value)
 const mouseOffset = computed(() => props.mouseOffset || internalMouseOffset.value)
 
-// 优化的鼠标移动处理函数
-const handleMouseMove = (e: MouseEvent) => {
-  const rect = getCachedRect()
-  if (!rect) return
+// 统一的位置更新函数
+const updateMousePosition = (clientX: number, clientY: number) => {
+  if (!glassRef.value?.$el) return
 
+  const rect = glassRef.value.$el.getBoundingClientRect()
   const centerX = rect.left + rect.width / 2
   const centerY = rect.top + rect.height / 2
 
   Object.assign(internalMouseOffset.value, {
-    x: ((e.clientX - centerX) / rect.width) * 100,
-    y: ((e.clientY - centerY) / rect.height) * 100,
+    x: (clientX - centerX) / (rect.width / 2),  // 标准化到 -1 到 1 范围
+    y: (clientY - centerY) / (rect.height / 2), // 标准化到 -1 到 1 范围
   })
 
   Object.assign(internalGlobalMousePos.value, {
-    x: e.clientX,
-    y: e.clientY,
+    x: clientX,
+    y: clientY,
   })
 }
 
-// 节流的鼠标移动处理函数
-const throttledHandleMouseMove = throttle(handleMouseMove, 16) // ~60fps
+// 鼠标移动处理函数
+const handleMouseMove = (e: Event) => {
+  const mouseEvent = e as MouseEvent
+  updateMousePosition(mouseEvent.clientX, mouseEvent.clientY)
+}
 
-// Set up mouse tracking if no external mouse position is provided
+// 触摸移动处理函数
+const handleTouchMove = (e: Event) => {
+  const touchEvent = e as TouchEvent
+  const touch = touchEvent.touches[0]
+  if (touch) {
+    updateMousePosition(touch.clientX, touch.clientY)
+
+    // 只在触摸点在组件区域内时才阻止默认行为
+    if (glassRef.value?.$el) {
+      const rect = glassRef.value.$el.getBoundingClientRect()
+      const isInside = touch.clientX >= rect.left &&
+        touch.clientX <= rect.right &&
+        touch.clientY >= rect.top &&
+        touch.clientY <= rect.bottom
+
+      if (isInside && touchEvent.cancelable) {
+        touchEvent.preventDefault()
+      }
+    }
+  }
+}
+
+// 触摸开始处理函数
+const handleTouchStart = (e: Event) => {
+  const touchEvent = e as TouchEvent
+  const touch = touchEvent.touches[0]
+  if (touch) {
+    updateMousePosition(touch.clientX, touch.clientY)
+
+    // 检查触摸点是否在界面区域内，如果是则设置激活状态
+    if (glassRef.value?.$el && props.onClick) {
+      const rect = glassRef.value.$el.getBoundingClientRect()
+      const isInside = touch.clientX >= rect.left &&
+        touch.clientX <= rect.right &&
+        touch.clientY >= rect.top &&
+        touch.clientY <= rect.bottom
+
+      if (isInside) {
+        isActive.value = true
+      }
+    }
+  }
+}
+
+// 触摸结束处理函数 - 重置位置以避免效果卡住
+const handleTouchEnd = () => {
+  if (!isTouchDevice.value) return
+
+  // 重置激活状态
+  isActive.value = false
+
+  // 延迟重置，让用户看到最后的效果
+  setTimeout(() => {
+    Object.assign(internalMouseOffset.value, { x: 0, y: 0 })
+    Object.assign(internalGlobalMousePos.value, { x: 0, y: 0 })
+  }, 300)
+}
+
+// 节流的事件处理函数
+const throttledHandleMouseMove = throttle(handleMouseMove, 16) // ~60fps
+const throttledHandleTouchMove = throttle(handleTouchMove, 16) // ~60fps
+
+// Set up mouse and touch tracking if no external mouse position is provided
 watchEffect(() => {
   if (props.globalMousePos && props.mouseOffset) {
     // External mouse tracking is provided, don't set up internal tracking
     return
   }
 
-  const container = props.mouseContainer || glassRef.value?.$el
+  const container = props.mouseContainer || document
   if (!container) {
     return
   }
 
+  // 添加鼠标事件监听器
   container.addEventListener("mousemove", throttledHandleMouseMove)
 
+  // 添加触摸事件监听器
+  container.addEventListener("touchmove", throttledHandleTouchMove, { passive: false })
+  container.addEventListener("touchstart", handleTouchStart, { passive: true })
+  container.addEventListener("touchend", handleTouchEnd, { passive: true })
+  container.addEventListener("touchcancel", handleTouchEnd, { passive: true })
+
   return () => {
+    // 清理鼠标事件监听器
     container.removeEventListener("mousemove", throttledHandleMouseMove)
+
+    // 清理触摸事件监听器
+    container.removeEventListener("touchmove", throttledHandleTouchMove)
+    container.removeEventListener("touchstart", handleTouchStart)
+    container.removeEventListener("touchend", handleTouchEnd)
+    container.removeEventListener("touchcancel", handleTouchEnd)
   }
 })
 
@@ -117,13 +190,13 @@ const baseCalculations = computed(() => {
     return null
   }
 
-  const rect = getCachedRect()
+  const rect = glassRef.value?.$el.getBoundingClientRect()
   if (!rect) return null
 
   const pillCenterX = rect.left + rect.width / 2
   const pillCenterY = rect.top + rect.height / 2
-  const pillWidth = glassSize.value.width
-  const pillHeight = glassSize.value.height
+  const pillWidth = rect.width  // 使用实际的DOM尺寸
+  const pillHeight = rect.height // 使用实际的DOM尺寸
 
   const deltaX = globalMousePos.value.x - pillCenterX
   const deltaY = globalMousePos.value.y - pillCenterY
@@ -166,8 +239,9 @@ const calculateDirectionalScale = computed(() => {
   const normalizedX = deltaX / centerDistance
   const normalizedY = deltaY / centerDistance
 
-  // Calculate stretch factors with fade-in
-  const stretchIntensity = Math.min(centerDistance / 300, 1) * props.elasticity * fadeInFactor
+  // Calculate stretch factors with fade-in - 为触摸设备调整强度
+  const elasticityMultiplier = isTouchDevice.value ? 1.5 : 1 // 触摸设备增强效果
+  const stretchIntensity = Math.min(centerDistance / 300, 1) * props.elasticity * fadeInFactor * elasticityMultiplier
 
   // X-axis scaling: stretch horizontally when moving left/right, compress when moving up/down
   const scaleX = 1 + Math.abs(normalizedX) * stretchIntensity * 0.3 - Math.abs(normalizedY) * stretchIntensity * 0.15
@@ -188,9 +262,12 @@ const calculateElasticTranslation = computed(() => {
 
   const { deltaX, deltaY, fadeInFactor } = calc
 
+  // 为触摸设备调整平移强度
+  const translationMultiplier = isTouchDevice.value ? 1.3 : 1
+
   return {
-    x: deltaX * props.elasticity * 0.1 * fadeInFactor,
-    y: deltaY * props.elasticity * 0.1 * fadeInFactor,
+    x: deltaX * props.elasticity * 0.1 * fadeInFactor * translationMultiplier,
+    y: deltaY * props.elasticity * 0.1 * fadeInFactor * translationMultiplier,
   }
 })
 
@@ -199,8 +276,6 @@ const throttledUpdateGlassSize = throttle(() => {
   if (glassRef.value) {
     const rect = glassRef.value?.$el.getBoundingClientRect()
     Object.assign(glassSize.value, { width: rect.width, height: rect.height })
-    // 清除缓存的 rect，强制下次重新获取
-    cachedRect.value = null
   }
 }, 100)
 
@@ -337,12 +412,13 @@ const hoverLayerBaseStyle = computed(() => {
       :class="`bg-black transition-all duration-150 ease-in-out pointer-events-none mix-blend-overlay ${props.overLight ? 'opacity-100' : 'opacity-0'}`"
       :style="sharedLayerStyle"></div>
 
-    <GlassContainer ref="glassRef" v-bind="$attrs" :effect="props.effect" :style="baseStyle" :cornerRadius="props.cornerRadius"
-      :displacementScale="props.overLight ? props.displacementScale * 0.5 : props.displacementScale" :blurAmount="props.blurAmount"
-      :saturation="props.saturation" :aberrationIntensity="props.aberrationIntensity" :glassSize="glassSize" :padding="props.padding"
-      :mouseOffset="mouseOffset" :onMouseEnter="() => isHovered = true" :onMouseLeave="() => isHovered = false"
-      :onMouseDown="() => isActive = true" :onMouseUp="() => isActive = false" :active="isActive" :overLight="props.overLight"
-      :onClick="props.onClick" :mode="props.mode">
+    <GlassContainer ref="glassRef" v-bind="$attrs" :effect="props.effect" :style="baseStyle"
+      :cornerRadius="props.cornerRadius"
+      :displacementScale="props.overLight ? props.displacementScale * 0.5 : props.displacementScale"
+      :blurAmount="props.blurAmount" :saturation="props.saturation" :aberrationIntensity="props.aberrationIntensity"
+      :glassSize="glassSize" :padding="props.padding" :mouseOffset="mouseOffset" :onMouseEnter="() => isHovered = true"
+      :onMouseLeave="() => isHovered = false" :onMouseDown="() => isActive = true" :onMouseUp="() => isActive = false"
+      :active="isActive" :overLight="props.overLight" :onClick="props.onClick" :mode="props.mode">
       <slot />
     </GlassContainer>
 
@@ -351,14 +427,14 @@ const hoverLayerBaseStyle = computed(() => {
       ...borderLayerBaseStyle,
       mixBlendMode: 'screen',
       opacity: 0.2,
-      background: `linear-gradient( ${135 + mouseOffset.x * 1.2}deg, rgba(255, 255, 255, 0.0) 0%, rgba(255, 255, 255,${0.12 + Math.abs(mouseOffset.x) * 0.008}) ${Math.max(10, 33 + mouseOffset.y * 0.3)}%, rgba(255, 255, 255, ${0.4 + Math.abs(mouseOffset.x) * 0.012}) ${Math.min(90, 66 + mouseOffset.y * 0.4)}%, rgba(255, 255, 255, 0.0) 100% )`
+      background: `linear-gradient( ${135 + mouseOffset.x * 12}deg, rgba(255, 255, 255, 0.0) 0%, rgba(255, 255, 255,${0.12 + Math.abs(mouseOffset.x) * 0.08}) ${Math.max(10, 33 + mouseOffset.y * 3)}%, rgba(255, 255, 255, ${0.4 + Math.abs(mouseOffset.x) * 0.12}) ${Math.min(90, 66 + mouseOffset.y * 4)}%, rgba(255, 255, 255, 0.0) 100% )`
     }"></span>
 
     <!-- Border layer 2 - duplicate with mix-blend-overlay -->
     <span :style="{
       ...borderLayerBaseStyle,
       mixBlendMode: 'overlay',
-      background: `linear-gradient( ${135 + mouseOffset.x * 1.2}deg, rgba(255, 255, 255, 0.0) 0%, rgba(255, 255, 255, ${0.32 + Math.abs(mouseOffset.x) * 0.008}) ${Math.max(10, 33 + mouseOffset.y * 0.3)}%, rgba(255, 255, 255, ${0.6 + Math.abs(mouseOffset.x) * 0.012}) ${Math.min(90, 66 + mouseOffset.y * 0.4)}%, rgba(255, 255, 255, 0.0) 100% )`
+      background: `linear-gradient( ${135 + mouseOffset.x * 12}deg, rgba(255, 255, 255, 0.0) 0%, rgba(255, 255, 255, ${0.32 + Math.abs(mouseOffset.x) * 0.08}) ${Math.max(10, 33 + mouseOffset.y * 3)}%, rgba(255, 255, 255, ${0.6 + Math.abs(mouseOffset.x) * 0.12}) ${Math.min(90, 66 + mouseOffset.y * 4)}%, rgba(255, 255, 255, 0.0) 100% )`
     }"></span>
 
     <template v-if="Boolean(props.onClick)">

@@ -32,6 +32,10 @@ export default defineConfig({
     rollupOptions: {
       // 确保外部化那些你不想打包进库的依赖
       external: ['vue'],
+      // 关闭混合导出警告
+      output: {
+        exports: 'named'
+      }
     },
   },
   resolve: {

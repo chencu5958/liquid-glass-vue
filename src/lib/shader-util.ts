@@ -25,20 +25,28 @@ export const fragmentShaders = {
 } as const
 
 export class ShaderDisplacementGenerator {
-  private worker: Worker
+  private worker: Worker | null = null
   private startTime = Date.now()
 
   constructor(private options: ShaderOptions) {
-    this.worker = new Worker(new URL('./workers/shader-worker.ts', import.meta.url), {
-      type: 'module',
-    })
+    // 只在客户端环境初始化Worker
+    if (typeof window !== 'undefined' && typeof Worker !== 'undefined') {
+      this.worker = new Worker(new URL('./workers/shader-worker.ts', import.meta.url), {
+        type: 'module',
+      })
+    }
   }
 
   updateShader(mousePosition?: Vec2): Promise<string> {
+    // 如果不在客户端环境或Worker不可用，返回空的data URL
+    if (!this.worker || typeof window === 'undefined') {
+      return Promise.resolve('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==')
+    }
+
     const currentTime = (Date.now() - this.startTime) / 1000 // Time in seconds
 
     return new Promise((resolve) => {
-      this.worker.onmessage = (e) => {
+      this.worker!.onmessage = (e) => {
         const { imageData } = e.data
         const canvas = document.createElement('canvas')
         canvas.width = this.options.width
@@ -50,7 +58,7 @@ export class ShaderDisplacementGenerator {
         }
       }
 
-      this.worker.postMessage({
+      this.worker!.postMessage({
         width: this.options.width,
         height: this.options.height,
         effect: this.options.effect,
@@ -61,7 +69,9 @@ export class ShaderDisplacementGenerator {
   }
 
   destroy(): void {
-    this.worker.terminate()
+    if (this.worker) {
+      this.worker.terminate()
+    }
   }
 
   getCurrentTime(): number {
